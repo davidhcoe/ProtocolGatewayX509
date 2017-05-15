@@ -3,7 +3,11 @@
 
 namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
 {
+    using Instrumentation;
     using Microsoft.Azure.Devices.ProtocolGateway.Identity;
+    using System;
+    using System.Security.Cryptography;
+    using System.Security.Cryptography.X509Certificates;
 
     public sealed class IotHubDeviceIdentity : IDeviceIdentity
     {
@@ -22,6 +26,10 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
         public bool IsAuthenticated => true;
 
         public string IotHubHostName { get; }
+
+
+        // coe
+        public X509Certificate2 Certificate { get; set; }
 
         public string PolicyName
         {
@@ -61,6 +69,34 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
         {
             this.Scope = AuthenticationScope.SasToken;
             this.Secret = token;
+        }
+
+        // coe
+        public void WithCertificate(X509Certificate2 clientCert)
+        {
+            this.Scope = AuthenticationScope.X509Certificate;
+
+            
+            //// a 'look up'
+            //if(clientCert.GetCertHashString() == "48A50F571EDE0F097B4A019702F645A11B0BD27C")
+            //{
+            //    var clientCert = new X509Certificate2(@"C:\IoT_Device_Certs\certificate.pfk", "changeit");
+
+            //    CommonEventSource.Log.Verbose("Client connected with cert hashed " + clientCert.GetCertHashString(), Id);
+
+            //    this.Certificate = clientCert;
+
+            //}
+
+
+            CommonEventSource.Log.Verbose("Client connected with cert hashed " + clientCert.GetCertHashString(), Id);
+
+            // we dont know the private key - and IoT Hub requires a private key
+
+            this.Certificate = clientCert; //new X509Certificate2(clientCert);
+            
+            Console.WriteLine(this.Certificate.Thumbprint);
+
         }
 
         public void WithHubKey(string keyName, string keyValue)

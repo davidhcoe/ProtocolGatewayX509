@@ -68,7 +68,10 @@ namespace ProtocolGateway.Host.Common
             this.iotHubClientSettings = new IotHubClientSettings(this.settingsProvider);
             this.sessionStateManager = sessionStateManager;
             this.qos2StateProvider = qos2StateProvider;
-            this.authProvider = new SasTokenDeviceIdentityProvider();
+            //this.authProvider = new SasTokenDeviceIdentityProvider();
+
+            this.authProvider = new X509DeviceIdentityProvider();
+
             this.topicNameConverter = addressConverter;
         }
 
@@ -148,6 +151,8 @@ namespace ProtocolGateway.Host.Common
                 connectionIdleTimeout, this.iotHubClientSettings, PooledByteBufferAllocator.Default, this.topicNameConverter);
             MessagingBridgeFactoryFunc bridgeFactory = async deviceIdentity => new SingleClientMessagingBridge(deviceIdentity, await deviceClientFactory(deviceIdentity));
 
+            TlsHandlerWrapper tlsWrapper = TlsHandlerWrapper.Server(this.tlsCertificate);
+           
             return new ServerBootstrap()
                 .Group(this.parentEventLoopGroup, this.eventLoopGroup)
                 .Option(ChannelOption.SoBacklog, ListenBacklogSize)
@@ -156,11 +161,15 @@ namespace ProtocolGateway.Host.Common
                 .Channel<TcpServerSocketChannel>()
                 .ChildHandler(new ActionChannelInitializer<ISocketChannel>(channel =>
                 {
-                    channel.Pipeline.AddLast(TlsHandler.Server(this.tlsCertificate));
+
+                    //channel.Pipeline.AddLast(TlsHandler.Server(this.tlsCertificate));
+                    channel.Pipeline.AddLast(tlsWrapper);
+                    //channel.Pipeline.AddLast(new ClientCertificateHandler(tlsWrapper));
                     channel.Pipeline.AddLast(
                         MqttEncoder.Instance,
                         new MqttDecoder(true, maxInboundMessageSize),
                         new MqttAdapter(
+                            tlsWrapper,
                             this.settings,
                             this.sessionStateManager,
                             this.authProvider,

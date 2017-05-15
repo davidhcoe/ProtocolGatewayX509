@@ -170,6 +170,7 @@
     <Compile Include="Mqtt\Util.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Instrumentation\SafePerformanceCounter.cs" />
+    <Compile Include="TlsHandlerWrapper.cs" />
     <Compile Include="UriPathTemplate.cs" />
   </ItemGroup>
   <ItemGroup>

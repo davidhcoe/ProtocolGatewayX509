@@ -5,11 +5,13 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
 {
     using System;
     using System.Net;
+    using System.Security.Cryptography.X509Certificates;
     using System.Threading.Tasks;
     using Microsoft.Azure.Devices.ProtocolGateway.Identity;
 
     public sealed class SasTokenDeviceIdentityProvider : IDeviceIdentityProvider
     {
+   
         public Task<IDeviceIdentity> GetAsync(string clientId, string username, string password, EndPoint clientAddress)
         {
             IotHubDeviceIdentity deviceIdentity;
@@ -19,6 +21,11 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
             }
             deviceIdentity.WithSasToken(password);
             return Task.FromResult<IDeviceIdentity>(deviceIdentity);
+        }
+
+        public Task<IDeviceIdentity> GetAsync(string clientId, string username, X509Certificate certificate, string keyStore, EndPoint clientAddress)
+        {
+            throw new NotImplementedException();
         }
     }
 }

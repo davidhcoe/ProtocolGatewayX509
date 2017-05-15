@@ -179,6 +179,7 @@
     <Compile Include="Addressing\MessageAddressConversionConfigurationHandler.cs" />
     <Compile Include="SasTokenDeviceIdentityProvider.cs" />
     <Compile Include="IotHubClientSettings.cs" />
+    <Compile Include="X509TokenIdentityProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config">

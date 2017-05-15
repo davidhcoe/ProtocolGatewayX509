@@ -108,6 +108,9 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Tests
                 iotHubClientSettings, PooledByteBufferAllocator.Default, topicNameRouter);
             MessagingBridgeFactoryFunc bridgeFactory = async identity => new SingleClientMessagingBridge(identity, await iotHubClientFactory(identity));
 
+            TlsHandlerWrapper tlsWrapper = TlsHandlerWrapper.Server(this.tlsCertificate);
+
+
             ServerBootstrap server = new ServerBootstrap()
                 .Group(executorGroup)
                 .Channel<TcpServerSocketChannel>()
@@ -115,12 +118,14 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Tests
                 .ChildOption(ChannelOption.AutoRead, false)
                 .ChildHandler(new ActionChannelInitializer<IChannel>(ch =>
                 {
-                    ch.Pipeline.AddLast(TlsHandler.Server(this.tlsCertificate));
+                    //ch.Pipeline.AddLast(TlsHandler.Server(this.tlsCertificate));
+                    ch.Pipeline.AddLast(tlsWrapper);
                     ch.Pipeline.AddLast(
                         MqttEncoder.Instance,
                         new MqttDecoder(true, 256 * 1024),
                         new LoggingHandler("SERVER"),
                         new MqttAdapter(
+                            tlsWrapper,
                             settings,
                             sessionStateProvider,
                             authProvider,

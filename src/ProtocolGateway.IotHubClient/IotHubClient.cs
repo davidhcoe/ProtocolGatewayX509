@@ -16,6 +16,7 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
     using Microsoft.Azure.Devices.ProtocolGateway.IotHubClient.Addressing;
     using Microsoft.Azure.Devices.ProtocolGateway.Messaging;
     using Microsoft.Azure.Devices.ProtocolGateway.Mqtt;
+    using System.Security.Cryptography.X509Certificates;
 
     public class IotHubClient : IMessagingServiceClient
     {
@@ -46,7 +47,7 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
             {
                 var amqpConnectionPoolSettings = new AmqpConnectionPoolSettings
                 {
-                    MaxPoolSize = unchecked ((uint)connectionPoolSize),
+                    MaxPoolSize = unchecked((uint)connectionPoolSize),
                     Pooling = connectionPoolSize > 0
                 };
                 if (connectionIdleTimeout.HasValue)
@@ -54,7 +55,10 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
                     amqpConnectionPoolSettings.ConnectionIdleTimeout = connectionIdleTimeout.Value;
                 }
                 tcpSettings.AmqpConnectionPoolSettings = amqpConnectionPoolSettings;
+                tcpSettings.ClientCertificate = null;
+
                 webSocketSettings.AmqpConnectionPoolSettings = amqpConnectionPoolSettings;
+                webSocketSettings.ClientCertificate = null;
             }
             DeviceClient client = DeviceClient.CreateFromConnectionString(connectionString, new ITransportSettings[]
             {
@@ -72,6 +76,49 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
             return new IotHubClient(client, deviceId, settings, allocator, messageAddressConverter);
         }
 
+
+        public static async Task<IMessagingServiceClient> CreateFromX509CertificateAsync(string deviceId, string connectionString,
+         int connectionPoolSize, TimeSpan? connectionIdleTimeout, IotHubClientSettings settings, IByteBufferAllocator allocator, IMessageAddressConverter messageAddressConverter, X509Certificate2 clientCertificate)
+        {
+            int maxPendingOutboundMessages = settings.MaxPendingOutboundMessages;
+            var tcpSettings = new AmqpTransportSettings(TransportType.Amqp_Tcp_Only) { ClientCertificate = clientCertificate };
+            var webSocketSettings = new AmqpTransportSettings(TransportType.Amqp_WebSocket_Only) { ClientCertificate = clientCertificate };
+
+            // COE --> There is something in the settings that prevents this from working correctly
+            //webSocketSettings.PrefetchCount = tcpSettings.PrefetchCount = (uint)maxPendingOutboundMessages;
+            //if (connectionPoolSize > 0)
+            //{
+            //    var amqpConnectionPoolSettings = new AmqpConnectionPoolSettings
+            //    {
+            //        MaxPoolSize = unchecked((uint)connectionPoolSize),
+            //        Pooling = connectionPoolSize > 0
+            //    };
+            //    if (connectionIdleTimeout.HasValue)
+            //    {
+            //        amqpConnectionPoolSettings.ConnectionIdleTimeout = connectionIdleTimeout.Value;
+            //    }
+            //    tcpSettings.AmqpConnectionPoolSettings = amqpConnectionPoolSettings;
+
+            //    webSocketSettings.AmqpConnectionPoolSettings = amqpConnectionPoolSettings;
+
+            //}
+            DeviceClient client = DeviceClient.CreateFromConnectionString(connectionString, new ITransportSettings[]
+            {
+                tcpSettings,
+                webSocketSettings
+            });
+            try
+            {
+                await client.OpenAsync();
+            }
+            catch (IotHubException ex)
+            {
+                throw ComposeIotHubCommunicationException(ex);
+            }
+            return new IotHubClient(client, deviceId, settings, allocator, messageAddressConverter);
+        }
+
+
         public static Func<IDeviceIdentity, Task<IMessagingServiceClient>> PreparePoolFactory(string baseConnectionString, int connectionPoolSize,
             TimeSpan? connectionIdleTimeout, IotHubClientSettings settings, IByteBufferAllocator allocator, IMessageAddressConverter messageAddressConverter)
         {
@@ -80,9 +127,17 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
             {
                 var identity = (IotHubDeviceIdentity)deviceIdentity;
                 csb.AuthenticationMethod = DeriveAuthenticationMethod(csb.AuthenticationMethod, identity);
-                csb.HostName = identity.IotHubHostName;
+
+                // coe -? for some reason this is the protocol gateway when using the Iot Hub client
+                // csb.HostName = identity.IotHubHostName;
+
+
                 string connectionString = csb.ToString();
-                return CreateFromConnectionStringAsync(identity.Id, connectionString, connectionPoolSize, connectionIdleTimeout, settings, allocator, messageAddressConverter);
+                return CreateFromX509CertificateAsync(
+                    identity.Id, connectionString, 
+                    connectionPoolSize, connectionIdleTimeout, 
+                    settings, allocator, 
+                    messageAddressConverter, identity.Certificate);
             };
             return mqttCommunicatorFactory;
         }
@@ -137,7 +192,7 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
                     message.Properties[this.settings.ServicePropertyPrefix + MessagePropertyNames.Subject] = address;
                 }
                 Message iotHubMessage = clientMessage.ToMessage();
-                
+
                 await this.deviceClient.SendEventAsync(iotHubMessage);
             }
             catch (IotHubException ex)
@@ -292,6 +347,8 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
                         return new DeviceAuthenticationWithToken(deviceIdentity.Id, deviceTokenAuth.Token);
                     }
                     throw new InvalidOperationException("");
+                case AuthenticationScope.X509Certificate:
+                    return new DeviceAuthenticationWithX509Certificate(deviceIdentity.Id, deviceIdentity.Certificate);
                 case AuthenticationScope.SasToken:
                     return new DeviceAuthenticationWithToken(deviceIdentity.Id, deviceIdentity.Secret);
                 case AuthenticationScope.DeviceKey:

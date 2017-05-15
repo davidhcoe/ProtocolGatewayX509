@@ -8,6 +8,9 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.IotHubClient
         None,
         SasToken,
         DeviceKey,
-        HubKey
+        HubKey,
+
+        // coe
+        X509Certificate
     }
 }

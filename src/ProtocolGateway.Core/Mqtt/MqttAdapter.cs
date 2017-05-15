@@ -18,6 +18,7 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
     using Microsoft.Azure.Devices.ProtocolGateway.Instrumentation;
     using Microsoft.Azure.Devices.ProtocolGateway.Messaging;
     using Microsoft.Azure.Devices.ProtocolGateway.Mqtt.Persistence;
+    using System.Security.Cryptography.X509Certificates;
 
     public sealed class MqttAdapter : ChannelHandlerAdapter, IMessagingChannel<MessageWithFeedback>
     {
@@ -38,6 +39,8 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
         static readonly Action<Task, object> ShutdownOnPubAckFaultAction = CreateScopedFaultAction("-> PUBACK");
         static readonly Action<Task, object> ShutdownOnPubRecFaultAction = CreateScopedFaultAction("-> PUBREC");
         static readonly Action<Task, object> ShutdownOnPubCompFaultAction = CreateScopedFaultAction("-> PUBCOMP");
+
+        TlsHandlerWrapper wrapper;
 
         IChannelHandlerContext capturedContext;
         readonly Settings settings;
@@ -62,12 +65,14 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
         string ChannelId => this.capturedContext.Channel.Id.ToString();
 
         public MqttAdapter(
+            TlsHandlerWrapper wrapper,
             Settings settings,
             ISessionStatePersistenceProvider sessionStateManager,
             IDeviceIdentityProvider authProvider,
             IQos2StatePersistenceProvider qos2StateProvider,
             MessagingBridgeFactoryFunc messagingBridgeFactory)
         {
+            Contract.Requires(wrapper != null);
             Contract.Requires(settings != null);
             Contract.Requires(sessionStateManager != null);
             Contract.Requires(authProvider != null);
@@ -86,6 +91,7 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
             this.settings = settings;
             this.sessionStateManager = sessionStateManager;
             this.authProvider = authProvider;
+            this.wrapper = wrapper;
             this.messagingBridgeFactory = messagingBridgeFactory;
         }
 
@@ -196,11 +202,13 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
 
         public override void UserEventTriggered(IChannelHandlerContext context, object @event)
         {
-            var handshakeCompletionEvent = @event as TlsHandshakeCompletionEvent;
+                var handshakeCompletionEvent = @event as TlsHandshakeCompletionEvent;
             if (handshakeCompletionEvent != null && !handshakeCompletionEvent.IsSuccessful)
             {
                 CommonEventSource.Log.Warning("TLS handshake failed.", handshakeCompletionEvent.Exception, this.ChannelId);
             }
+
+            
         }
 
         #endregion
@@ -810,8 +818,24 @@ namespace Microsoft.Azure.Devices.ProtocolGateway.Mqtt
                 }
 
                 this.stateFlags = StateFlags.ProcessingConnect;
-                this.identity = await this.authProvider.GetAsync(packet.ClientId,
-                    packet.Username, packet.Password, context.Channel.RemoteAddress);
+
+
+                if(wrapper.RemoteCertificate != null)
+                {
+                    //X509Certificate remoteCert = wrapper.RemoteCertificate;
+
+                    //byte[] rawCert = remoteCert.GetRawCertData();
+
+                    //string rawCert64 = Convert.ToBase64String(rawCert);
+
+
+                    this.identity = await this.authProvider.GetAsync(packet.ClientId,
+                        packet.Username, wrapper.RemoteCertificate, packet.Password, context.Channel.RemoteAddress);
+
+                }
+
+                //this.identity = await this.authProvider.GetAsync(packet.ClientId,
+                //    packet.Username, packet.Password, context.Channel.RemoteAddress);
 
                 if (!this.identity.IsAuthenticated)
                 {
